@@ -15,6 +15,7 @@ Bu repo, yapay zekâyı temelden öğrenme sürecimin kaydıdır: her deneyde ö
 | [`notebooks/adim2_mini_turkce_gpt.ipynb`](notebooks/adim2_mini_turkce_gpt.ipynb) | Karakter tokenizasyonu, Bigram taban modeli, çok kafalı self-attention ile Mini GPT, metin üretimi |
 | [`notebooks/adim3_bpe_tokenizer.ipynb`](notebooks/adim3_bpe_tokenizer.ipynb) | Metin normalleştirme, sıfırdan BPE tokenizer, ağırlık paylaşımı, erken durdurma, karakter başına adil karşılaştırma |
 | [`notebooks/adim4_acik_model_kiyas.ipynb`](notebooks/adim4_acik_model_kiyas.ipynb) | Kendi modelim ile Qwen3 (0.6B, 1.7B) ve Kumru-2B'nin aynı ölçüyle karşılaştırması, tokenizer analizi, sızıntı testi |
+| [`notebooks/adim5_mevzuat_rag.ipynb`](notebooks/adim5_mevzuat_rag.ipynb) | Mevzuat asistanı (RAG): madde madde ayrıştırma, BM25 + BGE-M3 hibrit arama, Kumru-2B ile kaynaklı cevap, üç katmanlı güvenlik |
 
 ## Mini GPT mimarisi
 
@@ -67,6 +68,30 @@ Aynı 461 bin karakterlik Vikipedi doğrulama metni ve aynı ölçü (karakter b
 | Qwen3-1.7B-Base | 1,72 B | Hayır | 2,45 | 0,780 | 0,828 | +0,048 |
 | **Kumru-2B-Base** | **2,38 B** | **Evet** | **3,11** | **0,611** | **0,688** | +0,077 |
 
+### Mevzuat asistanı (RAG)
+
+Anayasa, 657 sayılı Devlet Memurları Kanunu, 1739 sayılı Milli Eğitim Temel Kanunu, Öğretmenlik Meslek Kanunu ve Tevhid-i Tedrisat Kanunu madde madde ayrıştırıldı (946 parça). Soruya en ilgili maddeler bulunuyor, Kumru-2B yalnızca bu maddelere dayanarak cevap veriyor, kaynağı ise kod belirliyor.
+
+**Arama (8 test sorusu, doğru madde ilk 1 / ilk 5 sonuçta mı?):**
+
+| Yöntem | İsabet@1 | İsabet@5 |
+|---|---|---|
+| BM25 (kelime eşleşmesi) | %50 | %100 |
+| **Vektör (BGE-M3)** | **%100** | **%100** |
+| Hibrit (RRF) | %88 | %100 |
+
+**Örnek cevaplar:**
+
+| Soru | Cevap | Kaynak (kodla bulunan) |
+|---|---|---|
+| Memurların yıllık izin süresi ne kadardır? | 1–10 yıl hizmette 20 gün, 10 yıldan fazlasında 30 gün | 657, Madde 102 |
+| Öğretmenlerin yaz tatilinde izin hakkı var mıdır? | Yaz tatilinde aralıksız iki ay izinlidirler; kalan sürede meslekî çalışmalara katılırlar | 1739, Madde 50/A |
+| Futbol kulüplerinin yabancı oyuncu kontenjanı? | Belgelerde bu konuyla ilgili madde bulunamadı | — (model çalıştırılmadı) |
+
+**Güvenlik katmanları:** (1) Belgelerle ilgisiz soru modele gönderilmez; (2) model "bulamadım" derse kaynak gösterilmez; (3) cevap kaynağa yeterince benzemiyorsa uyarı verilir; (4) her cevapta dayanılan maddenin metni ve kapsamdaki belgeler gösterilir.
+
+> Bu asistan bir öğrenme ve portföy projesidir; hukuki danışmanlık yerine geçmez. Cevaplar yalnızca yüklenen belgeler kadar günceldir.
+
 ### Örnek üretim (sıcaklık 0,8)
 
 **Karakter modeli:**
@@ -113,6 +138,13 @@ Karakter modeli Türkçe ekleri, özel isimlerdeki kesme işaretini, tarih biçi
 17. **Benim tokenizer'ım alana bağımlı.** Vikipedi'den öğrendiği tarih cümlesini Qwen'den çok daha verimli böldü (10'a karşı 18 token), ama okul cümlesinde geride kaldı (24'e karşı 19). *Öğretmenleri* ve *toplantıya* gibi kelimeler eğitim verisinde neredeyse hiç yoktu.
 18. **Ezber değil, genelleme.** Büyük modellerin, hiç görmedikleri okul metnindeki skorları Vikipedi'dekine çok yakın kaldı (−0,04 ile +0,08). Bizim model ise %27 kötüleşti (+0,300): sorun ezber değil, yalnızca Vikipedi görmüş olmasının getirdiği **dar alan**. Türkçe avantajı Vikipedi dışında da sürüyor (Kumru ile Qwen-1.7B farkı 0,140). Tek bir metinle ölçüldüğü için küçük farklar gürültü olabilir.
 19. **Base model, dil ve gerçeklik.** Bir çalıştırmada Qwen3-1.7B-Base Türkçe başlayıp İngilizce bir alıştırmaya ("Which language is this? Step 1…") geçti ve gerçek bir partiye uydurma bir oy oranı atadı; başka bir çalıştırmada Türkçede kaldı ama Ankara'nın nüfusunu yanlış verip var olmayan bir "Milli Üniversitesi" uydurdu. Qwen modelleri akıcı ama güvenilmez; çok dilli model belirsiz noktalarda baskın diline kayabiliyor. Kumru ise iki çalıştırmada da akıcı ve doğru kaldı, ama turizm yazısı üslubunda; bu da eğitim verisinin büyük kısmının web metinlerinden geldiğini gösteriyor. Üretimler rastgele örneklemeyle yapıldığı için her çalıştırmada farklıdır.
+20. **Veri doğrulaması, modelden önce gelir.** "Anayasa.pdf" diye indirilen dosya aslında Anayasa ile TBMM İçtüzüğü'nün birleşik bir yayınıydı ve 897 bozuk Türkçe karakter (þ, ý, ð) içeriyordu. Madde numaralarının sıralı olup olmadığını denetleyen bir kontrol, 177 maddelik Anayasa'da "Madde 186"yı görünce hatayı yakaladı. Fark edilmeseydi asistan İçtüzük maddelerini "Anayasa" diye gösterecekti. Defter artık birleşik belgeleri, bozuk karakterleri ve taranmış PDF'leri otomatik tespit ediyor.
+21. **Ölçüm aracının kendisi de hatalı olabilir.** İlk madde kontrolü, kısımlara bölünen uzun maddeleri "eksik" sayıyordu; 657'de onlarca madde eksik görünüyordu. Kontrol düzeltilince tüm belgelerde eksik madde kalmadı.
+22. **Hibrit arama her zaman kazanmıyor.** Bu test setinde vektör araması tek başına hibritten iyi çıktı (İsabet@1 %100'e karşı %88). Ama 8 soruluk küçük bir set, kesin terim içeren soruları (ör. "4/B", "50/A") içermiyor; BM25'in güçlü olduğu durumlar test edilmeden karar verilmedi.
+23. **Küçük model kaynak göstermeyi talimatla güvenilir yapmıyor; örnekleri ise kopyalıyor.** Kumru, "madde numarasını belirt" talimatını atladı. Biçimi göstermek için isteme örnek bir cevap koyunca, memur çalışma süresi sorusuna bile örnekteki "Türkiye Devleti'nin başkenti Ankara'dır" cümlesiyle cevap verdi. Çözüm işbölümü oldu: model cevabı yazıyor, cevaba "Cevap:" diye biz başlıyoruz (önden doldurma), kaynağı ise kod buluyor.
+24. **RAG'siz model doğru madde numarasıyla yanlış içerik verdi.** Yıllık izin sorusunda 657'nin 102. maddesini doğru gösterip süreleri uydurdu ("en fazla 3 yıl / 4 yıl"). Doğru kaynak numarası güven verdiği için en tehlikeli halüsinasyon türü bu.
+25. **Doğru maddeyi bulmak, doğru cevabı garanti etmez.** Laiklik sorusunda arama doğru maddeyi birinci sıraya koydu, ama 5 madde verilen model ikinci sıradaki eşitlik maddesine dayanarak yanlış cevap verdi. 3 ya da 1 madde verilince doğru maddeye döndü. Küçük model fazla bağlamda dikkatini dağıtıyor; varsayılan kaynak sayısı 3'e indirildi.
+26. **Otomatik kontroller hataları azaltır, sıfırlamaz.** Belgelerle ilgisiz sorular (futbol, kredi kartı, hava durumu) ile ilgili sorular arasında net bir benzerlik boşluğu var (0,44–0,50'ye karşı 0,65–0,76) ve 0,58 eşiği ilkleri modele ulaşmadan durdurdu. Ama hukuki dilde sorulan kapsam dışı bir soru ("trafik cezası itiraz süresi", 0,666) ilgili bir sorudan bile yüksek puan aldı; model de 657'nin disiplin zamanaşımı maddesini gerçek bir ifadeyle aktardı. Cevap uydurma değildi, başka bir soruya aitti; hiçbir otomatik kontrol bunu yakalayamadı. Bu yüzden son katman şeffaflık: dayanılan maddenin metni ve kapsam her cevapta gösteriliyor.
 
 ---
 
@@ -138,10 +170,12 @@ Kod Colab dışında otomatik olarak yerel `./yapay_zeka_projesi/` klasörünü 
 - [x] Erken durdurma ve doğrulama hatasına göre en iyi modeli kaydetme
 - [x] Kendi BPE tokenizer'ım (kelime parçaları), tırnak ve karakter normalizasyonu
 - [x] Hazır açık modellerle (Qwen3, Kumru) aynı ölçüde karşılaştırma
-- [ ] Kumru-2B'nin LoRA ile okul ve mevzuat metinlerine ince ayarı
+- [x] Mevzuat asistanı (RAG): hibrit arama, kaynaklı cevap, güvenlik katmanları
+- [ ] Test setini ~20 soruya genişletmek (kesin terimli sorular, tüm kanunlar) ve arama yöntemini buna göre seçmek
+- [ ] Kumru-2B'nin LoRA ile cevap biçimi ve çok kaynaklı okuma için ince ayarı
 - [ ] Daha uzun eğitim ve daha fazla veri (BPE modeli 5.000 adımda hâlâ iyileşiyordu)
 - [ ] Daha büyük model ve yerel GPU'da eğitim
-- [ ] MEB mevzuatı için belgeye dayalı (RAG) asistan
+- [ ] Playwright otomasyonunda uzmanlaşmış kod modeli
 
 ## Teknolojiler
 
@@ -150,4 +184,7 @@ Python · PyTorch · Hugging Face Transformers & Datasets · Matplotlib · Googl
 ## Kullanılan açık modeller
 
 - [Qwen3-0.6B-Base](https://huggingface.co/Qwen/Qwen3-0.6B-Base) ve [Qwen3-1.7B-Base](https://huggingface.co/Qwen/Qwen3-1.7B-Base) — Qwen ekibi, Apache-2.0
-- [Kumru-2B-Base](https://huggingface.co/vngrs-ai/Kumru-2B-Base) — VNGRS, Apache-2.0
+- [Kumru-2B-Base](https://huggingface.co/vngrs-ai/Kumru-2B-Base) ve [Kumru-2B](https://huggingface.co/vngrs-ai/Kumru-2B) — VNGRS, Apache-2.0
+- [BGE-M3](https://huggingface.co/BAAI/bge-m3) — BAAI, çok dilli gömme modeli
+
+Mevzuat metinleri [mevzuat.gov.tr](https://www.mevzuat.gov.tr) üzerinden elle indirildi (site otomatik indirmeye izin vermiyor); repoda yer almıyor.
