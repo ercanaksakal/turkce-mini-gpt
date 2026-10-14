@@ -14,6 +14,7 @@ Bu repo, yapay zekâyı temelden öğrenme sürecimin kaydıdır: her deneyde ö
 | [`notebooks/adim1_pytorch_isinma.ipynb`](notebooks/adim1_pytorch_isinma.ipynb) | Tensörler, autograd, eğitim döngüsü, el yazısı rakam tanıma (MNIST), model boyutu ve öğrenme hızı deneyleri |
 | [`notebooks/adim2_mini_turkce_gpt.ipynb`](notebooks/adim2_mini_turkce_gpt.ipynb) | Karakter tokenizasyonu, Bigram taban modeli, çok kafalı self-attention ile Mini GPT, metin üretimi |
 | [`notebooks/adim3_bpe_tokenizer.ipynb`](notebooks/adim3_bpe_tokenizer.ipynb) | Metin normalleştirme, sıfırdan BPE tokenizer, ağırlık paylaşımı, erken durdurma, karakter başına adil karşılaştırma |
+| [`notebooks/adim4_acik_model_kiyas.ipynb`](notebooks/adim4_acik_model_kiyas.ipynb) | Kendi modelim ile Qwen3 (0.6B, 1.7B) ve Kumru-2B'nin aynı ölçüyle karşılaştırması, tokenizer analizi, sızıntı testi |
 
 ## Mini GPT mimarisi
 
@@ -55,6 +56,17 @@ Aynı veri, aynı model boyutu (4 katman, 256 boyut), aynı dropout ve 5.000 ad�
 
 BPE tokenizer 5 M karakterlik metinde 15 saniyede eğitildi. Ağırlık paylaşımı sayesinde 17 kat büyüyen sözlük parametre sayısını yalnızca %14 artırdı.
 
+### Hazır açık modellerle aynı ölçüde karşılaştırma
+
+Aynı 461 bin karakterlik Vikipedi doğrulama metni ve aynı ölçü (karakter başına hata). "Kendi metnim" sütunu, hiçbir modelin eğitimde görmediği, internette yayımlanmamış bir okul metni (sızıntı testi). Ölçümler Colab L4 GPU üzerinde, float32 ile yapıldı.
+
+| Model | Parametre | Türkçeye özel | Karakter/token | Vikipedi | Kendi metnim | Fark |
+|---|---|---|---|---|---|---|
+| Bizim BPE Mini GPT | 3,7 M | Evet | 2,62 | 1,128 | 1,428 | +0,300 |
+| Qwen3-0.6B-Base | 0,60 B | Hayır | 2,45 | 0,965 | 0,923 | −0,042 |
+| Qwen3-1.7B-Base | 1,72 B | Hayır | 2,45 | 0,780 | 0,828 | +0,048 |
+| **Kumru-2B-Base** | **2,38 B** | **Evet** | **3,11** | **0,611** | **0,688** | +0,077 |
+
 ### Örnek üretim (sıcaklık 0,8)
 
 **Karakter modeli:**
@@ -94,6 +106,13 @@ Karakter modeli Türkçe ekleri, özel isimlerdeki kesme işaretini, tarih biçi
 10. **Ölçü birimi önemli.** Token başına hata bölümler arasında yanıltıcıydı: doğrulama metni daha zor sıkıştığı için (2,62'ye karşı 2,86 karakter/token) doğrulama token hatası eğitimden düşük göründü. Karakter başına çevirince iki bölüm doğru şekilde hizalandı.
 11. **Tahminim tutmadı: erken durdurma devreye girmedi.** Token cinsinden veri 3 kat küçüldüğü için erken aşırı öğrenme bekliyordum; oysa doğrulama hatası 5.000 adım boyunca iyileşmeye devam etti (eğitim–doğrulama farkı 0,19'a açılsa da). Daha uzun eğitim hâlâ kazandırabilir.
 12. **BPE'nin kör noktası: cümle başı.** Cümle ortasındaki " İmparatorluğu" tek token olurken cümle başındaki "Osmanlı" `O` + `s` + `manlı` diye parçalandı. Tokenizer önünde boşluk olan ve olmayan kelimeyi ayrı öğreniyor; boşluksuz hâl seyrek olduğu için parçalanıyor.
+13. **Ölçüm hatası, sonucu tersine çevirebilir.** Kumru-2B ilk ölçümde 2,277 çıktı; 2 milyar parametrelik bir modelin bizim modelden kötü olması mümkün değildi. Sebep: model her girdinin başında `<BOS>` tokenı bekliyor (BOS'suz token başına hata 15,9, BOS'lu 1,5). Düzeltmeden sonra 0,611 oldu. BOS kullanmayan Qwen'in skoru değişmedi; bu, düzeltmenin doğruluğunun kontrolüydü.
+14. **Küçük test parçası yanıltır.** Doğrulama metninin ilk 100 bin karakteri, metnin tamamından 0,08 daha zor çıktı (1,209'a karşı 1,128). Bu yüzden tüm karşılaştırmalar metnin tamamında yapıldı.
+15. **Boyut mu, dil mi? Yine bir karıştırıcı değişken.** Kumru hem Türkçeye özel hem Qwen-0.6B'den 4 kat büyük. Ayırmak için Kumru'ya yakın boyutta Qwen3-1.7B eklendi. Qwen ailesinde 2,9 kat büyüme hatayı 0,185 düşürdü; bu eğilim logaritmik varsayılırsa, Kumru ile Qwen-1.7B arasındaki 1,4 katlık boyut farkı ~0,06 açıklıyor. Kalan ~0,11 büyük olasılıkla Türkçeye özel eğitimden geliyor. Kabaca: Kumru'nun üstünlüğünün **üçte ikisi dilden, üçte biri boyuttan**. (Varsayımlar: logaritmik ölçekleme, iki veri noktası, farklı eğitim verisi miktarları.)
+16. **Tokenizer, Türkçe başarının temeli.** Aynı cümle Kumru'da 8, Qwen'de 17 token. Kumru kök ve ekleri dilbilgisine uygun ayırıyor (*gurur + landır + ıyor*); Qwen "İmparatorluğu"nu beş parçaya bölüyor. İki Qwen boyutu aynı tokenizer'ı kullandığı için aralarındaki fark tamamen modelden geliyor.
+17. **Benim tokenizer'ım alana bağımlı.** Vikipedi'den öğrendiği tarih cümlesini Qwen'den çok daha verimli böldü (10'a karşı 18 token), ama okul cümlesinde geride kaldı (24'e karşı 19). *Öğretmenleri* ve *toplantıya* gibi kelimeler eğitim verisinde neredeyse hiç yoktu.
+18. **Ezber değil, genelleme.** Büyük modellerin, hiç görmedikleri okul metnindeki skorları Vikipedi'dekine çok yakın kaldı (−0,04 ile +0,08). Bizim model ise %27 kötüleşti (+0,300): sorun ezber değil, yalnızca Vikipedi görmüş olmasının getirdiği **dar alan**. Türkçe avantajı Vikipedi dışında da sürüyor (Kumru ile Qwen-1.7B farkı 0,140). Tek bir metinle ölçüldüğü için küçük farklar gürültü olabilir.
+19. **Base model, dil ve gerçeklik.** Bir çalıştırmada Qwen3-1.7B-Base Türkçe başlayıp İngilizce bir alıştırmaya ("Which language is this? Step 1…") geçti ve gerçek bir partiye uydurma bir oy oranı atadı; başka bir çalıştırmada Türkçede kaldı ama Ankara'nın nüfusunu yanlış verip var olmayan bir "Milli Üniversitesi" uydurdu. Qwen modelleri akıcı ama güvenilmez; çok dilli model belirsiz noktalarda baskın diline kayabiliyor. Kumru ise iki çalıştırmada da akıcı ve doğru kaldı, ama turizm yazısı üslubunda; bu da eğitim verisinin büyük kısmının web metinlerinden geldiğini gösteriyor. Üretimler rastgele örneklemeyle yapıldığı için her çalıştırmada farklıdır.
 
 ---
 
@@ -118,11 +137,17 @@ Kod Colab dışında otomatik olarak yerel `./yapay_zeka_projesi/` klasörünü 
 - [x] Karakter seviyesinde Mini GPT
 - [x] Erken durdurma ve doğrulama hatasına göre en iyi modeli kaydetme
 - [x] Kendi BPE tokenizer'ım (kelime parçaları), tırnak ve karakter normalizasyonu
+- [x] Hazır açık modellerle (Qwen3, Kumru) aynı ölçüde karşılaştırma
+- [ ] Kumru-2B'nin LoRA ile okul ve mevzuat metinlerine ince ayarı
 - [ ] Daha uzun eğitim ve daha fazla veri (BPE modeli 5.000 adımda hâlâ iyileşiyordu)
 - [ ] Daha büyük model ve yerel GPU'da eğitim
-- [ ] Açık bir modelin LoRA ile ince ayarı
 - [ ] MEB mevzuatı için belgeye dayalı (RAG) asistan
 
 ## Teknolojiler
 
-Python · PyTorch · Hugging Face Datasets · Matplotlib · Google Colab
+Python · PyTorch · Hugging Face Transformers & Datasets · Matplotlib · Google Colab
+
+## Kullanılan açık modeller
+
+- [Qwen3-0.6B-Base](https://huggingface.co/Qwen/Qwen3-0.6B-Base) ve [Qwen3-1.7B-Base](https://huggingface.co/Qwen/Qwen3-1.7B-Base) — Qwen ekibi, Apache-2.0
+- [Kumru-2B-Base](https://huggingface.co/vngrs-ai/Kumru-2B-Base) — VNGRS, Apache-2.0
