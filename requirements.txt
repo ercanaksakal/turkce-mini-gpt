@@ -1,0 +1,5 @@
+torch>=2.3
+torchvision>=0.18
+datasets>=2.19
+matplotlib>=3.8
+jupyter
